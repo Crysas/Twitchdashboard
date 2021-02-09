@@ -1,32 +1,41 @@
-import json
+import os
 import re
+import socket
 import sys
 import threading
 from time import sleep
-
+#from BanDialog import BanWindow
 import requests
-from PyQt5.QtWidgets import *
-import socket
-from dotenv import load_dotenv
-import os
-import bot
+from PyQt5 import QtCore
 
+import BanDialog
+from PyQt5.QtWidgets import *
+from dotenv import load_dotenv
+
+QtCore.QMetaType.type('QItemSelection')
+QtCore.QMetaType.type('QTextCursor')
 
 
 class Mainwindow(QWidget):
     def __init__(self):
         super().__init__()
         self.user_list = QListWidget(self, objectName="userList")
+        self.secondwindow = BanDialog.InitWindow()
         load_dotenv()
-        self.test()
         username = os.getenv("USERNAME")
         client_id = os.getenv("CLIENT_ID")
         token = os.getenv("AUTH_TOKEN")
         channel = os.getenv("CHANNEL").lower()
-        Thread = threading.Thread(target=self.Testloop, daemon=True)
-
+        Thread = threading.Thread(target=self.Twitchloop, daemon=True)
+        Chatlists = threading.Thread(target=self.Userloop, daemon=True)
+        Chatlists.start()
         Thread.start()
         self.initGui()
+
+    def passBanInfos(self):
+        username = self.user_list.currentItem().text()
+        self.secondwindow.username.setText(username)
+        self.secondwindow.displayInfo()
 
     def initGui(self):
         #linke Seite
@@ -66,12 +75,13 @@ class Mainwindow(QWidget):
         #unmod Button
         self.unmod_button = QPushButton("unmod", self, objectName="Redbutton")
         self.unmod_button.setGeometry(840, 650, 60, 30)
-        self.unmod_button.clicked.connect(self.unmod)
+        self.unmod_button.clicked.connect(self.passBanInfos)
 
         #mod Button
         self.mod_button = QPushButton("mod", self, objectName="Greenbutton")
         self.mod_button.setGeometry(910, 650, 60, 30)
         self.mod_button.clicked.connect(self.mod)
+
 
         #unmute Button
         self.unmute_button = QPushButton("unmute", self, objectName="Greenbutton")
@@ -89,7 +99,16 @@ class Mainwindow(QWidget):
         self.setStyleSheet(open("style.css").read())
         self.show()
 
-    def Testloop(self):
+
+    def Userloop(self):
+        r = requests.get("http://tmi.twitch.tv/group/user/crysas95/chatters").json()
+        while True:
+            chatters = r['chatters']['viewers']
+            self.user_list.clear()
+            self.user_list.addItems(chatters)
+            sleep(120)
+
+    def Twitchloop(self):
 
         load_dotenv()
         server = 'irc.chat.twitch.tv'
@@ -117,37 +136,46 @@ class Mainwindow(QWidget):
 
                 self.chatbox.append(messages)
 
+    def chat(self, msg):
+        self.twitchserver.send("PRIVMSG #{} :{}\r\n".format(os.getenv("CHANNEL").lower(), msg).encode("utf-8"))
+
     def senden(self):
        message = self.chat_input.text()
        self.twitchserver.send("PRIVMSG #{} :{}\r\n".format(os.getenv("CHANNEL").lower(), message).encode("utf-8"))
        self.chatbox.append(os.getenv("USERNAME") + ": " +message)
        self.chat_input.clear()
-    def test(self):
-        #TODO: LIST USERS WITH RANKS
-        r = requests.get("http://tmi.twitch.tv/group/user/crysas95/chatters").json()
-        chatters = r['chatters']['viewers']
-        self.user_list.addItems(chatters)
-    def ban(self):
-        print('ban')
 
-    def mute(self):
-        print('mute Action')
+    def ban(self):
+        user = self.user_list.currentItem().text()
+        self.twitchserver.send("PRIVMSG #{} :.ban {}\r\n".format(os.getenv("CHANNEL"), user).encode("utf-8"))
+
+    def mute(self, sock, secs=600):
+        user = self.user_list.currentItem().text()
+        self.twitchserver.send("PRIVMSG #{} :.timeout {} {}\r\n".format(os.getenv("CHANNEL"), user, secs).encode("utf-8"))
 
     def unmod(self):
-        print('Unmod Action')
+        print("hallo")
+        #user = self.user_list.currentItem().text()
+        #self.twitchserver.send("PRIVMSG #{} :.unmod {}".format(os.getenv("CHANNEL"), user).encode("utf-8"))
 
     def mod(self):
-        print('mod Action')
+        user = self.user_list.currentItem().text()
+        self.twitchserver.send("PRIVMSG #{} :.mod {}".format(os.getenv("CHANNEL"), user).encode("utf-8"))
 
     def unmute(self):
-        print('unmute Action')
+        user = self.user_list.currentItem().text()
+        self.twitchserver.send("PRIVMSG #{} :.unmute {}".format(os.getenv("CHANNEL"), user).encode("utf-8"))
 
     def vip(self):
-        print('vip Action')
+        user = self.user_list.currentItem().text()
+        self.twitchserver.send("PRIVMSG #{} :.vip {}".format(os.getenv("CHANNEL"), user).encode("utf-8"))
 
 
 
 app = QApplication(sys.argv)
 w = QWidget()
 y = Mainwindow()
+screen = app.primaryScreen()
+size = screen.size()
+print('Size: %d x %d' % (size.width(), size.height()))
 sys.exit(app.exec_())
